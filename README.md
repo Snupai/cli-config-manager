@@ -267,7 +267,12 @@ This will show the current version, commit hash, and build date.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Please read our [Contributing Guidelines](CONTRIBUTING.md) before submitting any contributions. We welcome all forms of contributions, including:
+
+- Bug reports
+- Feature requests
+- Documentation improvements
+- Code contributions
 
 ## License
 
