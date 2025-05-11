@@ -325,6 +325,8 @@ This command will:
 2. Compare it with your current version
 3. Download and install the new version if available
 4. Preserve your configuration and managed files
+5. Create a backup of the current version
+6. Verify the downloaded binary
 
 Examples:
   dotman upgrade  # Check and install updates`,
@@ -342,6 +344,31 @@ Examples:
 			fmt.Printf("Current version: %s\n", currentVersion)
 		}
 
+		// Check if we can write to the binary location
+		currentBinary, err := os.Executable()
+		if err != nil {
+			fmt.Printf("Error getting current binary path: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Create backup of current binary
+		backupPath := currentBinary + ".bak"
+		if err := copyFile(currentBinary, backupPath); err != nil {
+			fmt.Printf("Error creating backup: %v\n", err)
+			os.Exit(1)
+		}
+		defer os.Remove(backupPath) // Clean up backup if everything succeeds
+
+		// Check if binary is in use by trying to open it for writing
+		if f, err := os.OpenFile(currentBinary, os.O_WRONLY, 0); err == nil {
+			f.Close()
+		} else {
+			fmt.Println("Error: Cannot upgrade while dotman is running.")
+			fmt.Println("Please close all dotman processes and try again.")
+			os.Exit(1)
+		}
+
+		fmt.Println("Checking for updates...")
 		resp, err := http.Get("https://api.github.com/repos/Snupai/cli-config-manager/releases/latest")
 		if err != nil {
 			fmt.Printf("Error checking for updates: %v\n", err)
@@ -425,7 +452,7 @@ Examples:
 
 		archivePath := filepath.Join(tempDir, archiveName)
 
-		fmt.Println("Downloading new version archive...")
+		fmt.Println("Downloading new version...")
 		resp, err = http.Get(downloadURL)
 		if err != nil {
 			fmt.Printf("Error downloading new version: %v\n", err)
@@ -438,21 +465,63 @@ Examples:
 			os.Exit(1)
 		}
 
+		// Create a progress bar
+		fileSize := resp.ContentLength
+		progress := 0
+		lastProgress := 0
+
 		out, err := os.Create(archivePath)
 		if err != nil {
 			fmt.Printf("Error creating archive file: %v\n", err)
 			os.Exit(1)
 		}
-		if _, err := io.Copy(out, resp.Body); err != nil {
-			fmt.Printf("Error saving archive: %v\n", err)
+
+		// Download with progress
+		buf := make([]byte, 32*1024)
+		for {
+			nr, er := resp.Body.Read(buf)
+			if nr > 0 {
+				nw, ew := out.Write(buf[0:nr])
+				if nw > 0 {
+					progress += nw
+					// Update progress every 5%
+					if fileSize > 0 {
+						currentProgress := int(float64(progress) / float64(fileSize) * 100)
+						if currentProgress >= lastProgress+5 {
+							fmt.Printf("\rDownloading: %d%%", currentProgress)
+							lastProgress = currentProgress
+						}
+					}
+				}
+				if ew != nil {
+					err = ew
+					break
+				}
+				if nr != nw {
+					err = io.ErrShortWrite
+					break
+				}
+			}
+			if er != nil {
+				if er != io.EOF {
+					err = er
+				}
+				break
+			}
+		}
+		fmt.Println() // New line after progress
+		out.Close()
+
+		if err != nil {
+			fmt.Printf("Error downloading: %v\n", err)
 			os.Exit(1)
 		}
-		out.Close()
 
 		if verbose {
 			fmt.Printf("Archive downloaded to: %s\n", archivePath)
 		}
 
+		fmt.Println("Extracting archive...")
 		if err := untar(archivePath, tempDir, verbose); err != nil {
 			fmt.Printf("Error extracting archive: %v\n", err)
 			os.Exit(1)
@@ -479,33 +548,35 @@ Examples:
 			fmt.Printf("dotman binary found at: %s\n", dotmanPath)
 		}
 
-		currentBinary, err := os.Executable()
-		if err != nil {
-			fmt.Printf("Error getting current binary path: %v\n", err)
+		fmt.Println("Installing new version...")
+
+		// Create a temporary file in the same directory as the target
+		tempBinary := currentBinary + ".new"
+		if err := copyFile(dotmanPath, tempBinary); err != nil {
+			fmt.Printf("Error copying new version: %v\n", err)
 			os.Exit(1)
 		}
 
-		if verbose {
-			fmt.Printf("Replacing current binary: %s\n", currentBinary)
+		// Make the temporary file executable
+		if err := os.Chmod(tempBinary, 0755); err != nil {
+			fmt.Printf("Error setting permissions: %v\n", err)
+			os.Remove(tempBinary)
+			os.Exit(1)
 		}
 
-		fmt.Println("Installing new version...")
-		if err := os.Rename(dotmanPath, currentBinary); err != nil {
-			if linkErr, ok := err.(*os.LinkError); ok && strings.Contains(linkErr.Error(), "cross-device link") {
-				if verbose {
-					fmt.Println("Rename failed due to cross-device link, falling back to copy.")
-				}
-				if err := copyFile(dotmanPath, currentBinary); err != nil {
-					fmt.Printf("Error copying new version: %v\n", err)
-					os.Exit(1)
-				}
-			} else {
-				fmt.Printf("Error installing new version: %v\n", err)
-				os.Exit(1)
-			}
+		// Try to rename the temporary file to the target
+		if err := os.Rename(tempBinary, currentBinary); err != nil {
+			fmt.Printf("Error installing new version: %v\n", err)
+			fmt.Println("\nPlease try the following steps manually:")
+			fmt.Printf("1. Copy the new binary: cp %s %s.new\n", dotmanPath, currentBinary)
+			fmt.Printf("2. Make it executable: chmod +x %s.new\n", currentBinary)
+			fmt.Printf("3. Replace the old binary: mv %s.new %s\n", currentBinary, currentBinary)
+			os.Remove(tempBinary)
+			os.Exit(1)
 		}
 
 		fmt.Printf("Successfully upgraded to version %s\n", latestVersion)
+		fmt.Println("Please restart your terminal or run 'hash -r' to use the new version.")
 	},
 }
 
@@ -668,16 +739,18 @@ func init() {
 
 	// Add completion commands
 	rootCmd.AddCommand(&cobra.Command{
-		Use:   "completion [bash|zsh|fish|powershell]",
-		Short: "Generate completion script",
-		Long: `To load completions:
+		Use:   "completion [bash|zsh|fish]",
+		Short: "Generate shell completion scripts",
+		Long: `Generate shell completion scripts for dotman.
+
+This command will generate completion scripts for your shell. To load completions:
 
 Bash:
   $ source <(dotman completion bash)
 
   # To load completions for each session, execute once:
   # Linux:
-  $ dotman completion bash > /etc/bash_completion.d/dotman
+  $ sudo dotman completion bash > /etc/bash_completion.d/dotman
   # macOS:
   $ dotman completion bash > /usr/local/etc/bash_completion.d/dotman
 
@@ -690,12 +763,9 @@ Zsh:
 Fish:
   $ dotman completion fish > ~/.config/fish/completions/dotman.fish
 
-PowerShell:
-  PS> dotman completion powershell > dotman.ps1
-  # and source this file from your PowerShell profile.
-`,
+Note: You may need to restart your shell or run 'hash -r' for the changes to take effect.`,
 		DisableFlagsInUseLine: true,
-		ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
+		ValidArgs:             []string{"bash", "zsh", "fish"},
 		Args:                  cobra.ExactValidArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			switch args[0] {
@@ -705,8 +775,6 @@ PowerShell:
 				cmd.Root().GenZshCompletion(os.Stdout)
 			case "fish":
 				cmd.Root().GenFishCompletion(os.Stdout, true)
-			case "powershell":
-				cmd.Root().GenPowerShellCompletionWithDesc(os.Stdout)
 			}
 		},
 	})
