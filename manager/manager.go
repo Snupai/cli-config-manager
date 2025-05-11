@@ -102,8 +102,15 @@ func (m *Manager) InitializeGitRepo(repoName string) error {
 		return fmt.Errorf("error creating .gitignore: %v", err)
 	}
 
-	// Create repository on GitHub using gh CLI
-	createRepoCmd := exec.Command("gh", "repo", "create", repoName, "--private", "--source", m.config.DotmanDir, "--remote", "origin")
+	// Create README.md
+	readmePath := filepath.Join(m.config.DotmanDir, "README.md")
+	readmeContent := []byte("# Dotman Managed Dotfiles\n\nThis is my dotman-managed dotfiles repository.")
+	if err := os.WriteFile(readmePath, readmeContent, 0644); err != nil {
+		return fmt.Errorf("error creating README.md: %v", err)
+	}
+
+	// Create repository on GitHub using gh CLI (public by default)
+	createRepoCmd := exec.Command("gh", "repo", "create", repoName, "--public", "--source", m.config.DotmanDir, "--remote", "origin")
 	if err := createRepoCmd.Run(); err != nil {
 		return fmt.Errorf("error creating GitHub repository: %v. Make sure you have the GitHub CLI (gh) installed and are authenticated", err)
 	}
