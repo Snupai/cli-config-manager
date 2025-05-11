@@ -285,13 +285,6 @@ func (m *Manager) AddFile(filePath string) error {
 		return fmt.Errorf("error committing file: %v", err)
 	}
 
-	// Push the changes
-	fmt.Println("Pushing changes...")
-	pushCmd := exec.Command("git", "-C", m.config.DotmanDir, "push")
-	if err := pushCmd.Run(); err != nil {
-		fmt.Printf("Warning: Failed to push changes: %v\n", err)
-	}
-
 	return nil
 }
 
@@ -545,6 +538,22 @@ func (m *Manager) RestoreBackup(backupID string) error {
 		if err := os.Symlink(backup.SymlinkPath, backup.OriginalPath); err != nil {
 			return fmt.Errorf("failed to restore symlink: %v", err)
 		}
+	}
+
+	return nil
+}
+
+// Push pushes committed changes to the remote repository
+func (m *Manager) Push() error {
+	// Check if we're in a git repository
+	if !m.isGitRepo() {
+		return fmt.Errorf("not a git repository. Please initialize git first")
+	}
+
+	// Push changes
+	pushCmd := exec.Command("git", "-C", m.config.DotmanDir, "push")
+	if err := pushCmd.Run(); err != nil {
+		return fmt.Errorf("error pushing changes: %v", err)
 	}
 
 	return nil

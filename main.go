@@ -760,6 +760,39 @@ Examples:
 	},
 }
 
+var pushCmd = &cobra.Command{
+	Use:   "push",
+	Short: "Push changes to the remote repository",
+	Long: `Push your committed changes to the remote repository.
+
+This command will:
+1. Push all committed changes to the remote repository
+2. Show the status of the push operation
+
+Use this command after:
+- Adding new files
+- Making changes to existing files
+- Committing changes
+
+Example:
+  dotman push`,
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.New()
+		if err != nil {
+			fmt.Printf("Error creating config: %v\n", err)
+			os.Exit(1)
+		}
+
+		m := manager.New(cfg)
+		if err := m.Push(); err != nil {
+			fmt.Printf("Error pushing changes: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println("Successfully pushed changes to remote repository")
+	},
+}
+
 func untar(src, dest string, verbose bool) error {
 	f, err := os.Open(src)
 	if err != nil {
@@ -833,6 +866,7 @@ func init() {
 	rootCmd.AddCommand(restoreCmd)
 	rootCmd.AddCommand(healthCheckCmd)
 	rootCmd.AddCommand(docsCmd)
+	rootCmd.AddCommand(pushCmd)
 
 	upgradeCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output for upgrade")
 	docsCmd.Flags().BoolP("update", "u", false, "Update existing documentation")
