@@ -128,13 +128,31 @@ func (m *Manager) InitializeGitRepo(repoName string) error {
 		return fmt.Errorf("error committing files: %v", err)
 	}
 
-	// Push to GitHub
-	pushCmd := exec.Command("git", "-C", m.config.DotmanDir, "push", "-u", "origin", "main")
-	if err := pushCmd.Run(); err != nil {
-		return fmt.Errorf("error pushing to GitHub: %v", err)
+	// Set the default branch to main
+	branchCmd := exec.Command("git", "-C", m.config.DotmanDir, "branch", "-M", "main")
+	if err := branchCmd.Run(); err != nil {
+		return fmt.Errorf("error setting default branch: %v", err)
 	}
 
-	return nil
+	// Try to push with retries
+	maxRetries := 3
+	for i := 0; i < maxRetries; i++ {
+		pushCmd := exec.Command("git", "-C", m.config.DotmanDir, "push", "-u", "origin", "main")
+		if err := pushCmd.Run(); err != nil {
+			if i == maxRetries-1 {
+				// On last retry, try to get more detailed error information
+				output, _ := pushCmd.CombinedOutput()
+				return fmt.Errorf("error pushing to GitHub after %d attempts: %v\nOutput: %s", maxRetries, err, string(output))
+			}
+			// Wait a bit before retrying
+			time.Sleep(time.Second * time.Duration(i+1))
+			continue
+		}
+		// Push succeeded
+		return nil
+	}
+
+	return fmt.Errorf("failed to push to GitHub after %d attempts", maxRetries)
 }
 
 // AddFile adds a new file to be managed
