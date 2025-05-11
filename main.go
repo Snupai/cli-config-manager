@@ -692,7 +692,12 @@ This command will:
 2. Verify file permissions
 3. Check git repository status
 4. Verify backup integrity
-5. Validate configuration files
+5. Check for file conflicts
+6. Check for outdated configurations
+7. Monitor disk space
+8. Check for uncommitted changes
+
+The results are saved in the .dotman/health directory for future reference.
 
 Examples:
   dotman check  # Run all health checks
@@ -711,6 +716,39 @@ Examples:
 		}
 
 		fmt.Println("Health check completed successfully")
+	},
+}
+
+var docsCmd = &cobra.Command{
+	Use:   "docs",
+	Short: "Generate documentation for your configuration files",
+	Long: `Generate comprehensive documentation for your managed configuration files.
+
+This command will:
+1. Create a main README with an overview of all configurations
+2. Generate individual documentation for each configuration file
+3. Detect and document dependencies and tags
+4. Save metadata in JSON format for programmatic access
+
+The documentation is generated in the .dotman/docs directory.
+
+Examples:
+  dotman docs  # Generate all documentation
+  dotman docs --update  # Update existing documentation`,
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.New()
+		if err != nil {
+			fmt.Printf("Error creating config: %v\n", err)
+			os.Exit(1)
+		}
+
+		m := manager.New(cfg)
+		if err := m.GenerateDocs(); err != nil {
+			fmt.Printf("Error generating documentation: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println("Documentation generated successfully")
 	},
 }
 
@@ -786,8 +824,10 @@ func init() {
 	rootCmd.AddCommand(backupCmd)
 	rootCmd.AddCommand(restoreCmd)
 	rootCmd.AddCommand(healthCheckCmd)
+	rootCmd.AddCommand(docsCmd)
 
 	upgradeCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output for upgrade")
+	docsCmd.Flags().BoolP("update", "u", false, "Update existing documentation")
 
 	// Add completion commands
 	rootCmd.AddCommand(&cobra.Command{
