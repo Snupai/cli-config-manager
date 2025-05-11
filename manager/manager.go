@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"cli-config-manager/config"
@@ -71,8 +72,58 @@ func (m *Manager) InitializeFromExistingRepo(repoURL string) error {
 		return fmt.Errorf("error cloning repository: %v", err)
 	}
 
-	// Link all files
-	return m.Link()
+	// Read the configs directory
+	return filepath.Walk(filepath.Join(m.config.DotmanDir, "configs"), func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories
+		if info.IsDir() {
+			return nil
+		}
+
+		// Get relative path from configs directory
+		relPath, err := filepath.Rel(filepath.Join(m.config.DotmanDir, "configs"), path)
+		if err != nil {
+			return fmt.Errorf("error getting relative path: %v", err)
+		}
+
+		// Calculate the target path in home directory
+		targetPath := filepath.Join(m.config.HomeDir, relPath)
+
+		// Check if target already exists
+		if _, err := os.Stat(targetPath); err == nil {
+			// File exists, ask user what to do
+			fmt.Printf("\nFile already exists: %s\n", targetPath)
+			fmt.Print("Do you want to overwrite it? [y/N]: ")
+
+			var response string
+			fmt.Scanln(&response)
+			if strings.ToLower(response) != "y" {
+				fmt.Printf("Skipping %s\n", relPath)
+				return nil
+			}
+		}
+
+		// Create parent directories if they don't exist
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+			return fmt.Errorf("error creating parent directories for %s: %v", targetPath, err)
+		}
+
+		// Remove existing file/link if it exists
+		if err := os.RemoveAll(targetPath); err != nil {
+			return fmt.Errorf("error removing existing file %s: %v", targetPath, err)
+		}
+
+		// Create symbolic link
+		if err := os.Symlink(path, targetPath); err != nil {
+			return fmt.Errorf("error creating symbolic link for %s: %v", targetPath, err)
+		}
+
+		fmt.Printf("Linked: %s -> %s\n", targetPath, path)
+		return nil
+	})
 }
 
 // InitializeGitRepo initializes a git repository and creates it on GitHub
@@ -186,6 +237,22 @@ func (m *Manager) AddFile(filePath string) error {
 		return fmt.Errorf("error copying file: %v", err)
 	}
 
+	// Create parent directories for the symlink if they don't exist
+	if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
+		return fmt.Errorf("error creating parent directories: %v", err)
+	}
+
+	// Remove existing file/link if it exists
+	if err := os.RemoveAll(absPath); err != nil {
+		return fmt.Errorf("error removing existing file: %v", err)
+	}
+
+	// Create symbolic link
+	if err := os.Symlink(targetPath, absPath); err != nil {
+		return fmt.Errorf("error creating symbolic link: %v", err)
+	}
+
+	fmt.Printf("Added and linked: %s -> %s\n", absPath, targetPath)
 	return nil
 }
 
