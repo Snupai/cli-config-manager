@@ -360,15 +360,6 @@ Examples:
 		}
 		defer os.Remove(backupPath) // Clean up backup if everything succeeds
 
-		// Check if binary is in use by trying to open it for writing
-		if f, err := os.OpenFile(currentBinary, os.O_WRONLY, 0); err == nil {
-			f.Close()
-		} else {
-			fmt.Println("Error: Cannot upgrade while dotman is running.")
-			fmt.Println("Please close all dotman processes and try again.")
-			os.Exit(1)
-		}
-
 		fmt.Println("Checking for updates...")
 		resp, err := http.Get("https://api.github.com/repos/Snupai/cli-config-manager/releases/latest")
 		if err != nil {
