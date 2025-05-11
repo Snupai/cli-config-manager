@@ -1,6 +1,19 @@
 #!/bin/bash
+# NOTE: This script is intended to be run via:
+#   curl -sSL https://raw.githubusercontent.com/Snupai/cli-config-manager/main/install.sh | bash
+# or:
+#   wget -qO- https://raw.githubusercontent.com/Snupai/cli-config-manager/main/install.sh | bash
 
-set -e
+set -euo pipefail
+IFS=$'\n\t'
+
+# Buffer hack for curl|bash: a big comment block to ensure the shell waits for the full script
+: <<'END_OF_HEADER'
+................................................................................
+................................................................................
+................................................................................
+................................................................................
+END_OF_HEADER
 
 # Colors for output
 RED='\033[0;31m'
