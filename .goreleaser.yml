@@ -53,4 +53,11 @@ snapshot:
 
 release:
   draft: false
-  prerelease: auto 
+  prerelease: auto
+
+# Add binary uploads
+uploads:
+  - name_template: "dotman-{{ .Os }}-{{ .Arch }}"
+    format: binary
+    files:
+      - dist/dotman 

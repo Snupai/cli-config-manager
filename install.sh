@@ -73,8 +73,14 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 # Download the binary
 print_color "$YELLOW" "Downloading dotman..."
 if ! curl -L "$DOWNLOAD_URL" -o "$TEMP_DIR/dotman" --fail --progress-bar; then
-    print_color "$RED" "Failed to download binary"
-    exit 1
+    print_color "$RED" "Failed to download binary from $DOWNLOAD_URL"
+    print_color "$YELLOW" "Checking alternative download URL..."
+    # Try alternative URL format
+    ALT_URL="https://github.com/Snupai/cli-config-manager/releases/download/${LATEST_VERSION}/cli-config-manager-${OS}-${ARCH}"
+    if ! curl -L "$ALT_URL" -o "$TEMP_DIR/dotman" --fail --progress-bar; then
+        print_color "$RED" "Failed to download binary from alternative URL"
+        exit 1
+    fi
 fi
 
 # Verify the binary
