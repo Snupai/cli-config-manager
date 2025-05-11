@@ -57,10 +57,3 @@ snapshot:
 release:
   draft: false
   prerelease: auto
-
-# Add binary uploads
-uploads:
-  - name: binaries
-    # Use the proper key as per GoReleaser's documentation
-    assets:
-      - dist/dotman-*

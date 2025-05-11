@@ -72,42 +72,57 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 
 # Download the binary
 print_color "$YELLOW" "Downloading dotman..."
-if ! curl -L "$DOWNLOAD_URL" -o "$TEMP_DIR/dotman" --fail --progress-bar; then
-    print_color "$RED" "Failed to download binary from $DOWNLOAD_URL"
-    print_color "$YELLOW" "Checking alternative download URL..."
-    # Try alternative URL format
-    ALT_URL="https://github.com/Snupai/cli-config-manager/releases/download/${LATEST_VERSION}/cli-config-manager-${OS}-${ARCH}"
-    if ! curl -L "$ALT_URL" -o "$TEMP_DIR/dotman" --fail --progress-bar; then
-        print_color "$RED" "Failed to download binary from alternative URL"
+if curl -L "$DOWNLOAD_URL" -o "$TEMP_DIR/dotman" --fail --progress-bar; then
+    BINARY_PATH="$TEMP_DIR/dotman"
+else
+    print_color "$RED" "Raw binary not found at $DOWNLOAD_URL. Trying archive..."
+    ARCHIVE_URL="https://github.com/Snupai/cli-config-manager/releases/download/${LATEST_VERSION}/cli-config-manager-${OS}-${ARCH}.tar.gz"
+    ARCHIVE_PATH="$TEMP_DIR/archive.tar.gz"
+    if curl -L "$ARCHIVE_URL" -o "$ARCHIVE_PATH" --fail --progress-bar; then
+        print_color "$YELLOW" "Extracting archive..."
+        tar -xzf "$ARCHIVE_PATH" -C "$TEMP_DIR"
+        # Find the dotman binary in the extracted files
+        if [ -f "$TEMP_DIR/dotman" ]; then
+            BINARY_PATH="$TEMP_DIR/dotman"
+        else
+            # Try to find it in a subdirectory if present
+            BINARY_PATH=$(find "$TEMP_DIR" -type f -name dotman | head -n 1)
+            if [ -z "$BINARY_PATH" ]; then
+                print_color "$RED" "dotman binary not found in the archive."
+                exit 1
+            fi
+        fi
+    else
+        print_color "$RED" "Failed to download both raw binary and archive."
         exit 1
     fi
 fi
 
 # Verify the binary
-if [ ! -s "$TEMP_DIR/dotman" ]; then
+if [ ! -s "$BINARY_PATH" ]; then
     print_color "$RED" "Downloaded file is empty"
     exit 1
 fi
 
 # Check if it's a valid binary
-if ! file "$TEMP_DIR/dotman" | grep -q "ELF\|Mach-O"; then
+if ! file "$BINARY_PATH" | grep -q "ELF\|Mach-O"; then
     print_color "$RED" "Downloaded file is not a valid binary"
-    cat "$TEMP_DIR/dotman"
+    cat "$BINARY_PATH"
     exit 1
 fi
 
 # Make it executable
-chmod +x "$TEMP_DIR/dotman"
+chmod +x "$BINARY_PATH"
 
 # Install the binary
 print_color "$YELLOW" "Installing dotman..."
 if [ "$(id -u)" -eq 0 ]; then
     # If running as root, install to /usr/local/bin
-    mv "$TEMP_DIR/dotman" /usr/local/bin/dotman
+    mv "$BINARY_PATH" /usr/local/bin/dotman
 else
     # If not running as root, install to ~/.local/bin
     mkdir -p ~/.local/bin
-    mv "$TEMP_DIR/dotman" ~/.local/bin/dotman
+    mv "$BINARY_PATH" ~/.local/bin/dotman
     
     # Add ~/.local/bin to PATH if it's not already there
     if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
