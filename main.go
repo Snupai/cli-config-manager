@@ -13,6 +13,10 @@ import (
 	"cli-config-manager/config"
 	"cli-config-manager/manager"
 
+	"archive/tar"
+	"compress/gzip"
+	"io"
+
 	"github.com/spf13/cobra"
 )
 
@@ -21,6 +25,8 @@ var (
 	commit  = "none"
 	date    = "unknown"
 )
+
+var verbose bool
 
 var rootCmd = &cobra.Command{
 	Use:   "dotman",
@@ -329,10 +335,12 @@ Examples:
 			os.Exit(1)
 		}
 
-		// Remove 'v' prefix if present
 		currentVersion = strings.TrimPrefix(currentVersion, "v")
 
-		// Get latest version from GitHub
+		if verbose {
+			fmt.Printf("Current version: %s\n", currentVersion)
+		}
+
 		resp, err := http.Get("https://api.github.com/repos/Snupai/cli-config-manager/releases/latest")
 		if err != nil {
 			fmt.Printf("Error checking for updates: %v\n", err)
@@ -350,7 +358,10 @@ Examples:
 
 		latestVersion := strings.TrimPrefix(release.TagName, "v")
 
-		// Compare versions
+		if verbose {
+			fmt.Printf("Latest version: %s\n", latestVersion)
+		}
+
 		if latestVersion == currentVersion {
 			fmt.Printf("You are already using the latest version: %s\n", currentVersion)
 			return
@@ -368,22 +379,42 @@ Examples:
 			return
 		}
 
-		// Determine OS and architecture
+		// Determine OS and architecture for archive naming
 		goos := runtime.GOOS
 		goarch := runtime.GOARCH
-		if goarch == "amd64" {
-			goarch = "x86_64"
+		var releaseOS, releaseArch string
+
+		switch goos {
+		case "linux":
+			releaseOS = "Linux"
+		case "darwin":
+			releaseOS = "Darwin"
+		default:
+			fmt.Printf("Unsupported OS: %s\n", goos)
+			os.Exit(1)
 		}
 
-		// Download URL
+		switch goarch {
+		case "amd64":
+			releaseArch = "x86_64"
+		case "arm64":
+			releaseArch = "arm64"
+		default:
+			fmt.Printf("Unsupported architecture: %s\n", goarch)
+			os.Exit(1)
+		}
+
+		archiveName := fmt.Sprintf("cli-config-manager-%s-%s.tar.gz", releaseOS, releaseArch)
 		downloadURL := fmt.Sprintf(
-			"https://github.com/Snupai/cli-config-manager/releases/download/%s/dotman-%s-%s",
+			"https://github.com/Snupai/cli-config-manager/releases/download/%s/%s",
 			release.TagName,
-			goos,
-			goarch,
+			archiveName,
 		)
 
-		// Create temporary directory
+		if verbose {
+			fmt.Printf("Download URL: %s\n", downloadURL)
+		}
+
 		tempDir, err := os.MkdirTemp("", "dotman-upgrade")
 		if err != nil {
 			fmt.Printf("Error creating temp directory: %v\n", err)
@@ -391,8 +422,9 @@ Examples:
 		}
 		defer os.RemoveAll(tempDir)
 
-		// Download new version
-		fmt.Println("Downloading new version...")
+		archivePath := filepath.Join(tempDir, archiveName)
+
+		fmt.Println("Downloading new version archive...")
 		resp, err = http.Get(downloadURL)
 		if err != nil {
 			fmt.Printf("Error downloading new version: %v\n", err)
@@ -405,36 +437,110 @@ Examples:
 			os.Exit(1)
 		}
 
-		// Save to temp file
-		newBinaryPath := filepath.Join(tempDir, "dotman")
-		newBinary, err := os.OpenFile(newBinaryPath, os.O_CREATE|os.O_WRONLY, 0755)
+		out, err := os.Create(archivePath)
 		if err != nil {
-			fmt.Printf("Error creating new binary file: %v\n", err)
+			fmt.Printf("Error creating archive file: %v\n", err)
 			os.Exit(1)
 		}
-		defer newBinary.Close()
+		if _, err := io.Copy(out, resp.Body); err != nil {
+			fmt.Printf("Error saving archive: %v\n", err)
+			os.Exit(1)
+		}
+		out.Close()
 
-		if _, err := newBinary.ReadFrom(resp.Body); err != nil {
-			fmt.Printf("Error saving new binary: %v\n", err)
+		if verbose {
+			fmt.Printf("Archive downloaded to: %s\n", archivePath)
+		}
+
+		if err := untar(archivePath, tempDir, verbose); err != nil {
+			fmt.Printf("Error extracting archive: %v\n", err)
 			os.Exit(1)
 		}
 
-		// Get current binary path
+		dotmanPath := filepath.Join(tempDir, "dotman")
+		if _, err := os.Stat(dotmanPath); os.IsNotExist(err) {
+			// Try to find it in a subdirectory
+			dotmanPath = ""
+			err = filepath.Walk(tempDir, func(path string, info os.FileInfo, err error) error {
+				if info != nil && info.Name() == "dotman" && !info.IsDir() {
+					dotmanPath = path
+					return io.EOF // stop walking
+				}
+				return nil
+			})
+			if dotmanPath == "" {
+				fmt.Println("dotman binary not found in the archive.")
+				os.Exit(1)
+			}
+		}
+
+		if verbose {
+			fmt.Printf("dotman binary found at: %s\n", dotmanPath)
+		}
+
 		currentBinary, err := os.Executable()
 		if err != nil {
 			fmt.Printf("Error getting current binary path: %v\n", err)
 			os.Exit(1)
 		}
 
-		// Replace current binary
+		if verbose {
+			fmt.Printf("Replacing current binary: %s\n", currentBinary)
+		}
+
 		fmt.Println("Installing new version...")
-		if err := os.Rename(newBinaryPath, currentBinary); err != nil {
+		if err := os.Rename(dotmanPath, currentBinary); err != nil {
 			fmt.Printf("Error installing new version: %v\n", err)
 			os.Exit(1)
 		}
 
 		fmt.Printf("Successfully upgraded to version %s\n", latestVersion)
 	},
+}
+
+func untar(src, dest string, verbose bool) error {
+	f, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dest, hdr.Name)
+		if verbose {
+			fmt.Printf("Extracting: %s\n", target)
+		}
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			outFile, err := os.Create(target)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(outFile, tr); err != nil {
+				outFile.Close()
+				return err
+			}
+			outFile.Close()
+			os.Chmod(target, os.FileMode(hdr.Mode))
+		}
+	}
+	return nil
 }
 
 func init() {
@@ -446,6 +552,8 @@ func init() {
 	rootCmd.AddCommand(updateCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(upgradeCmd)
+
+	upgradeCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output for upgrade")
 
 	// Add completion commands
 	rootCmd.AddCommand(&cobra.Command{
