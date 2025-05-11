@@ -53,10 +53,4 @@ snapshot:
 
 release:
   draft: false
-  prerelease: auto
-
-blobs:
-  - provider: github
-    folder: "."
-    glob: "dotman-*"
-    bucket: "releases" 
+  prerelease: auto 
