@@ -38,6 +38,9 @@ archives:
       - README.md
       - install.sh
 
+  - format: binary
+    name_template: "dotman-{{ .Os }}-{{ .Arch }}"
+
 changelog:
   sort: asc
   filters:
