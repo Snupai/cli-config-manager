@@ -72,7 +72,23 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 
 # Download the binary
 print_color "$YELLOW" "Downloading dotman..."
-curl -L "$DOWNLOAD_URL" -o "$TEMP_DIR/dotman"
+if ! curl -L "$DOWNLOAD_URL" -o "$TEMP_DIR/dotman" --fail --progress-bar; then
+    print_color "$RED" "Failed to download binary"
+    exit 1
+fi
+
+# Verify the binary
+if [ ! -s "$TEMP_DIR/dotman" ]; then
+    print_color "$RED" "Downloaded file is empty"
+    exit 1
+fi
+
+# Check if it's a valid binary
+if ! file "$TEMP_DIR/dotman" | grep -q "ELF\|Mach-O"; then
+    print_color "$RED" "Downloaded file is not a valid binary"
+    cat "$TEMP_DIR/dotman"
+    exit 1
+fi
 
 # Make it executable
 chmod +x "$TEMP_DIR/dotman"
