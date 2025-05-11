@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -564,16 +565,27 @@ Examples:
 			os.Exit(1)
 		}
 
-		// Try to rename the temporary file to the target
-		if err := os.Rename(tempBinary, currentBinary); err != nil {
-			fmt.Printf("Error installing new version: %v\n", err)
-			fmt.Println("\nPlease try the following steps manually:")
-			fmt.Printf("1. Copy the new binary: cp %s %s.new\n", dotmanPath, currentBinary)
-			fmt.Printf("2. Make it executable: chmod +x %s.new\n", currentBinary)
-			fmt.Printf("3. Replace the old binary: mv %s.new %s\n", currentBinary, currentBinary)
+		// Create a temporary script to handle the replacement
+		scriptContent := fmt.Sprintf(`#!/bin/sh
+# Wait a moment for the parent process to exit
+sleep 1
+
+# Replace the binary
+mv %s %s
+
+# Clean up
+rm "$0"
+`, tempBinary, currentBinary)
+
+		scriptPath := filepath.Join(tempDir, "replace.sh")
+		if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
+			fmt.Printf("Error creating replacement script: %v\n", err)
 			os.Remove(tempBinary)
 			os.Exit(1)
 		}
+
+		// Execute the replacement script in the background
+		exec.Command(scriptPath).Start()
 
 		fmt.Printf("Successfully upgraded to version %s\n", latestVersion)
 		fmt.Println("Please restart your terminal or run 'hash -r' to use the new version.")
