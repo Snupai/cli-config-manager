@@ -793,6 +793,41 @@ Example:
 	},
 }
 
+var removeCmd = &cobra.Command{
+	Use:   "remove [file]",
+	Short: "Remove a file from dotman management",
+	Long: `Remove a file from dotman management.
+
+This command will:
+1. Copy the file back to its original location
+2. Remove the symbolic link
+3. Remove the file from git tracking
+4. Commit the removal
+
+The file will no longer be managed by dotman but will remain in its original location.
+
+Examples:
+  dotman remove ~/.bashrc
+  dotman remove ~/.config/i3/config
+  dotman remove .vimrc`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.New()
+		if err != nil {
+			fmt.Printf("Error creating config: %v\n", err)
+			os.Exit(1)
+		}
+
+		m := manager.New(cfg)
+		if err := m.RemoveFile(args[0]); err != nil {
+			fmt.Printf("Error removing file: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Successfully removed %s from dotman management\n", args[0])
+	},
+}
+
 func untar(src, dest string, verbose bool) error {
 	f, err := os.Open(src)
 	if err != nil {
@@ -867,6 +902,7 @@ func init() {
 	rootCmd.AddCommand(healthCheckCmd)
 	rootCmd.AddCommand(docsCmd)
 	rootCmd.AddCommand(pushCmd)
+	rootCmd.AddCommand(removeCmd)
 
 	upgradeCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output for upgrade")
 	docsCmd.Flags().BoolP("update", "u", false, "Update existing documentation")

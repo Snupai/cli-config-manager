@@ -572,3 +572,61 @@ func (m *Manager) Push() error {
 
 	return nil
 }
+
+// RemoveFile removes a file from dotman management
+func (m *Manager) RemoveFile(filePath string) error {
+	// Convert to absolute path
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return fmt.Errorf("error getting absolute path: %v", err)
+	}
+
+	// Get relative path from home directory
+	relPath, err := filepath.Rel(m.config.HomeDir, absPath)
+	if err != nil {
+		return fmt.Errorf("error getting relative path: %v", err)
+	}
+
+	// Check if the file is in the configs directory
+	targetPath := filepath.Join(m.config.ConfigsDir, relPath)
+	if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+		return fmt.Errorf("file is not managed by dotman: %s", filePath)
+	}
+
+	// Check if the file is a symlink
+	linkPath, err := os.Readlink(absPath)
+	if err != nil {
+		return fmt.Errorf("file is not a symlink: %s", filePath)
+	}
+
+	// Verify the symlink points to our configs directory
+	if !strings.HasPrefix(linkPath, m.config.ConfigsDir) {
+		return fmt.Errorf("file is not managed by dotman: %s", filePath)
+	}
+
+	// Remove the symlink
+	if err := os.Remove(absPath); err != nil {
+		return fmt.Errorf("error removing symlink: %v", err)
+	}
+
+	// Copy the file back to its original location
+	if err := copyFile(targetPath, absPath); err != nil {
+		return fmt.Errorf("error copying file back: %v", err)
+	}
+
+	// Remove the file from git
+	rmCmd := exec.Command("git", "-C", m.config.DotmanDir, "rm", "-f", targetPath)
+	if output, err := rmCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("error removing file from git: %v\nOutput: %s", err, string(output))
+	}
+
+	// Commit the removal
+	commitMsg := fmt.Sprintf("Remove %s", relPath)
+	commitCmd := exec.Command("git", "-C", m.config.DotmanDir, "commit", "-m", commitMsg)
+	if output, err := commitCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("error committing removal: %v\nOutput: %s", err, string(output))
+	}
+
+	fmt.Printf("Removed %s from dotman management\n", filePath)
+	return nil
+}
