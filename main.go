@@ -576,7 +576,19 @@ rm "$0"
 		}
 
 		// Execute the replacement script in the background
-		exec.Command(scriptPath).Start()
+		replaceCmd := exec.Command(scriptPath)
+		if err := replaceCmd.Start(); err != nil {
+			fmt.Printf("Error starting replacement script: %v\n", err)
+			os.Remove(tempBinary)
+			os.Exit(1)
+		}
+
+		// Wait for the script to complete
+		if err := replaceCmd.Wait(); err != nil {
+			fmt.Printf("Error during binary replacement: %v\n", err)
+			os.Remove(tempBinary)
+			os.Exit(1)
+		}
 
 		fmt.Printf("Successfully upgraded to version %s\n", latestVersion)
 		fmt.Println("Please restart your terminal or run 'hash -r' to use the new version.")
