@@ -589,6 +589,10 @@ rm "$0"
 
 		fmt.Printf("Successfully upgraded to version %s\n", latestVersion)
 		fmt.Println("Please restart your terminal or run 'hash -r' to use the new version.")
+		fmt.Println("\nTo update shell completions, run:")
+		fmt.Println("  source <(dotman completion bash)  # for bash")
+		fmt.Println("  source <(dotman completion zsh)   # for zsh")
+		fmt.Println("  dotman completion fish > ~/.config/fish/completions/dotman.fish  # for fish")
 	},
 }
 
