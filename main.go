@@ -311,6 +311,7 @@ var versionCmd = &cobra.Command{
 		fmt.Printf("dotman version %s\n", version)
 		fmt.Printf("commit: %s\n", commit)
 		fmt.Printf("built: %s\n", date)
+		fmt.Println("repo: https://github.com/Snupai/cli-config-manager")
 	},
 }
 
