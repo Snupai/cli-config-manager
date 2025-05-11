@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"cli-config-manager/config"
@@ -66,64 +65,57 @@ func (m *Manager) InitializeFromExistingRepo(repoURL string) error {
 		return fmt.Errorf("git user.email not configured. Please run: git config --global user.email 'your.email@example.com'")
 	}
 
-	// Clone the repository
-	cloneCmd := exec.Command("git", "clone", repoURL, m.config.DotmanDir)
-	if err := cloneCmd.Run(); err != nil {
-		return fmt.Errorf("error cloning repository: %v", err)
+	// Check if the directory is empty
+	entries, err := os.ReadDir(m.config.DotmanDir)
+	if err != nil {
+		return fmt.Errorf("error reading dotman directory: %v", err)
 	}
 
-	// Read the configs directory
-	return filepath.Walk(filepath.Join(m.config.DotmanDir, "configs"), func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
+	if len(entries) > 0 {
+		return fmt.Errorf("dotman directory is not empty. Please remove existing files or use a different directory")
+	}
 
-		// Skip directories
-		if info.IsDir() {
-			return nil
-		}
+	// Clone the repository with verbose output
+	fmt.Printf("Cloning repository: %s\n", repoURL)
+	cloneCmd := exec.Command("git", "clone", repoURL, m.config.DotmanDir)
+	output, err := cloneCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error cloning repository: %v\nOutput: %s", err, string(output))
+	}
+	fmt.Printf("Repository cloned successfully\n")
 
-		// Get relative path from configs directory
-		relPath, err := filepath.Rel(filepath.Join(m.config.DotmanDir, "configs"), path)
-		if err != nil {
-			return fmt.Errorf("error getting relative path: %v", err)
-		}
+	// Create configs directory if it doesn't exist
+	configsDir := filepath.Join(m.config.DotmanDir, "configs")
+	if err := os.MkdirAll(configsDir, 0755); err != nil {
+		return fmt.Errorf("error creating configs directory: %v", err)
+	}
 
-		// Calculate the target path in home directory
-		targetPath := filepath.Join(m.config.HomeDir, relPath)
+	// Update .gitignore to include configs directory
+	gitignorePath := filepath.Join(m.config.DotmanDir, ".gitignore")
+	gitignoreContent := []byte("# Ignore everything in this directory\n*\n# Except this file\n!.gitignore\n!configs/\n")
+	if err := os.WriteFile(gitignorePath, gitignoreContent, 0644); err != nil {
+		return fmt.Errorf("error updating .gitignore: %v", err)
+	}
 
-		// Check if target already exists
-		if _, err := os.Stat(targetPath); err == nil {
-			// File exists, ask user what to do
-			fmt.Printf("\nFile already exists: %s\n", targetPath)
-			fmt.Print("Do you want to overwrite it? [y/N]: ")
+	// Add and commit the configs directory
+	addCmd := exec.Command("git", "-C", m.config.DotmanDir, "add", "configs", ".gitignore")
+	if err := addCmd.Run(); err != nil {
+		return fmt.Errorf("error adding configs directory: %v", err)
+	}
 
-			var response string
-			fmt.Scanln(&response)
-			if strings.ToLower(response) != "y" {
-				fmt.Printf("Skipping %s\n", relPath)
-				return nil
-			}
-		}
+	commitCmd := exec.Command("git", "-C", m.config.DotmanDir, "commit", "-m", "Add configs directory")
+	if err := commitCmd.Run(); err != nil {
+		return fmt.Errorf("error committing configs directory: %v", err)
+	}
 
-		// Create parent directories if they don't exist
-		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-			return fmt.Errorf("error creating parent directories for %s: %v", targetPath, err)
-		}
+	// Push the changes
+	pushCmd := exec.Command("git", "-C", m.config.DotmanDir, "push")
+	if err := pushCmd.Run(); err != nil {
+		fmt.Printf("Warning: Failed to push changes: %v\n", err)
+	}
 
-		// Remove existing file/link if it exists
-		if err := os.RemoveAll(targetPath); err != nil {
-			return fmt.Errorf("error removing existing file %s: %v", targetPath, err)
-		}
-
-		// Create symbolic link
-		if err := os.Symlink(path, targetPath); err != nil {
-			return fmt.Errorf("error creating symbolic link for %s: %v", targetPath, err)
-		}
-
-		fmt.Printf("Linked: %s -> %s\n", targetPath, path)
-		return nil
-	})
+	fmt.Println("Repository initialized successfully. You can now start adding configuration files.")
+	return nil
 }
 
 // InitializeGitRepo initializes a git repository and creates it on GitHub
