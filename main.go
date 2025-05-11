@@ -509,6 +509,89 @@ Examples:
 	},
 }
 
+var backupCmd = &cobra.Command{
+	Use:   "backup [file]",
+	Short: "Create a backup of a managed configuration file",
+	Long: `Create a backup of a managed configuration file.
+
+This command will:
+1. Create a backup of the specified file
+2. Store the backup in the .dotman/backups directory
+3. Save metadata about the backup including original path and symlink target
+
+Examples:
+  dotman backup ~/.bashrc
+  dotman backup ~/.config/i3/config`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.New()
+		if err != nil {
+			fmt.Printf("Error creating config: %v\n", err)
+			os.Exit(1)
+		}
+
+		m := manager.New(cfg)
+		if err := m.BackupFile(args[0]); err != nil {
+			fmt.Printf("Error creating backup: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Successfully created backup of %s\n", args[0])
+	},
+}
+
+var restoreCmd = &cobra.Command{
+	Use:   "restore [backup_id]",
+	Short: "Restore a file from a backup",
+	Long: `Restore a file from a backup.
+
+This command will:
+1. List available backups if no backup_id is provided
+2. Restore the specified backup to its original location
+3. Recreate the symlink if it existed
+
+Examples:
+  dotman restore  # List available backups
+  dotman restore 2024-02-20-123456  # Restore specific backup`,
+	Args: cobra.MaximumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.New()
+		if err != nil {
+			fmt.Printf("Error creating config: %v\n", err)
+			os.Exit(1)
+		}
+
+		m := manager.New(cfg)
+		if len(args) == 0 {
+			// List available backups
+			backups, err := m.ListBackups()
+			if err != nil {
+				fmt.Printf("Error listing backups: %v\n", err)
+				os.Exit(1)
+			}
+
+			if len(backups) == 0 {
+				fmt.Println("No backups available")
+				return
+			}
+
+			fmt.Println("Available backups:")
+			for _, backup := range backups {
+				fmt.Printf("  %s - %s\n", backup.ID, backup.OriginalPath)
+			}
+			return
+		}
+
+		// Restore specific backup
+		if err := m.RestoreBackup(args[0]); err != nil {
+			fmt.Printf("Error restoring backup: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Successfully restored backup %s\n", args[0])
+	},
+}
+
 func untar(src, dest string, verbose bool) error {
 	f, err := os.Open(src)
 	if err != nil {
@@ -578,6 +661,8 @@ func init() {
 	rootCmd.AddCommand(updateCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(upgradeCmd)
+	rootCmd.AddCommand(backupCmd)
+	rootCmd.AddCommand(restoreCmd)
 
 	upgradeCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output for upgrade")
 

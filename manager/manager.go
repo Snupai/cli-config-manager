@@ -1,10 +1,12 @@
 package manager
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"cli-config-manager/config"
 )
@@ -270,4 +272,156 @@ func copyFile(src, dst string) error {
 	}
 
 	return os.WriteFile(dst, sourceFile, 0644)
+}
+
+// BackupMetadata represents the metadata for a backup
+type BackupMetadata struct {
+	ID           string    `json:"id"`
+	OriginalPath string    `json:"original_path"`
+	SymlinkPath  string    `json:"symlink_path,omitempty"`
+	Timestamp    time.Time `json:"timestamp"`
+}
+
+// Backup represents a complete backup
+type Backup struct {
+	BackupMetadata
+	Content []byte `json:"-"`
+}
+
+// BackupFile creates a backup of a managed file
+func (m *Manager) BackupFile(filePath string) error {
+	// Ensure the backups directory exists
+	backupsDir := filepath.Join(m.config.DotmanDir, "backups")
+	if err := os.MkdirAll(backupsDir, 0755); err != nil {
+		return fmt.Errorf("failed to create backups directory: %v", err)
+	}
+
+	// Read the original file
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read file: %v", err)
+	}
+
+	// Create backup metadata
+	backup := Backup{
+		BackupMetadata: BackupMetadata{
+			ID:           time.Now().Format("2006-01-02-150405"),
+			OriginalPath: filePath,
+			Timestamp:    time.Now(),
+		},
+		Content: content,
+	}
+
+	// Check if the file is a symlink
+	if linkPath, err := os.Readlink(filePath); err == nil {
+		backup.SymlinkPath = linkPath
+	}
+
+	// Create backup directory
+	backupDir := filepath.Join(backupsDir, backup.ID)
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		return fmt.Errorf("failed to create backup directory: %v", err)
+	}
+
+	// Save the file content
+	if err := os.WriteFile(filepath.Join(backupDir, "content"), content, 0644); err != nil {
+		return fmt.Errorf("failed to save backup content: %v", err)
+	}
+
+	// Save the metadata
+	metadata, err := json.MarshalIndent(backup.BackupMetadata, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(backupDir, "metadata.json"), metadata, 0644); err != nil {
+		return fmt.Errorf("failed to save metadata: %v", err)
+	}
+
+	return nil
+}
+
+// ListBackups returns a list of all available backups
+func (m *Manager) ListBackups() ([]BackupMetadata, error) {
+	backupsDir := filepath.Join(m.config.DotmanDir, "backups")
+	if _, err := os.Stat(backupsDir); os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	entries, err := os.ReadDir(backupsDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read backups directory: %v", err)
+	}
+
+	var backups []BackupMetadata
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		metadataPath := filepath.Join(backupsDir, entry.Name(), "metadata.json")
+		metadata, err := os.ReadFile(metadataPath)
+		if err != nil {
+			continue // Skip backups with missing metadata
+		}
+
+		var backup BackupMetadata
+		if err := json.Unmarshal(metadata, &backup); err != nil {
+			continue // Skip backups with invalid metadata
+		}
+
+		backups = append(backups, backup)
+	}
+
+	return backups, nil
+}
+
+// RestoreBackup restores a file from a backup
+func (m *Manager) RestoreBackup(backupID string) error {
+	backupsDir := filepath.Join(m.config.DotmanDir, "backups")
+	backupDir := filepath.Join(backupsDir, backupID)
+
+	// Read metadata
+	metadataPath := filepath.Join(backupDir, "metadata.json")
+	metadata, err := os.ReadFile(metadataPath)
+	if err != nil {
+		return fmt.Errorf("failed to read backup metadata: %v", err)
+	}
+
+	var backup BackupMetadata
+	if err := json.Unmarshal(metadata, &backup); err != nil {
+		return fmt.Errorf("failed to parse backup metadata: %v", err)
+	}
+
+	// Read backup content
+	contentPath := filepath.Join(backupDir, "content")
+	content, err := os.ReadFile(contentPath)
+	if err != nil {
+		return fmt.Errorf("failed to read backup content: %v", err)
+	}
+
+	// Create parent directory if it doesn't exist
+	if err := os.MkdirAll(filepath.Dir(backup.OriginalPath), 0755); err != nil {
+		return fmt.Errorf("failed to create parent directory: %v", err)
+	}
+
+	// Restore the file
+	if err := os.WriteFile(backup.OriginalPath, content, 0644); err != nil {
+		return fmt.Errorf("failed to restore file: %v", err)
+	}
+
+	// Restore symlink if it existed
+	if backup.SymlinkPath != "" {
+		// Remove existing file/link if it exists
+		if err := os.Remove(backup.OriginalPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove existing file: %v", err)
+		}
+
+		// Create the symlink
+		if err := os.Symlink(backup.SymlinkPath, backup.OriginalPath); err != nil {
+			return fmt.Errorf("failed to restore symlink: %v", err)
+		}
+	}
+
+	return nil
 }
