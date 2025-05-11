@@ -670,6 +670,38 @@ Examples:
 	},
 }
 
+var healthCheckCmd = &cobra.Command{
+	Use:   "check",
+	Short: "Check the health of your dotfile configuration",
+	Long: `Verify the health and integrity of your dotfile configuration.
+
+This command will:
+1. Check for broken symbolic links
+2. Verify file permissions
+3. Check git repository status
+4. Verify backup integrity
+5. Validate configuration files
+
+Examples:
+  dotman check  # Run all health checks
+  dotman check --fix  # Run checks and attempt to fix issues`,
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.New()
+		if err != nil {
+			fmt.Printf("Error creating config: %v\n", err)
+			os.Exit(1)
+		}
+
+		m := manager.New(cfg)
+		if err := m.HealthCheck(); err != nil {
+			fmt.Printf("Health check failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println("Health check completed successfully")
+	},
+}
+
 func untar(src, dest string, verbose bool) error {
 	f, err := os.Open(src)
 	if err != nil {
@@ -741,6 +773,7 @@ func init() {
 	rootCmd.AddCommand(upgradeCmd)
 	rootCmd.AddCommand(backupCmd)
 	rootCmd.AddCommand(restoreCmd)
+	rootCmd.AddCommand(healthCheckCmd)
 
 	upgradeCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output for upgrade")
 
