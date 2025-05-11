@@ -13,7 +13,9 @@ dotman is a modern dotfile manager that helps you manage your configuration file
 - Automatic GitHub repository creation
 - List managed files
 - Initialize from existing repository
-- Shell completion support (bash, zsh, fish, powershell)
+- Shell completion support (bash, zsh, fish)
+- Health monitoring and documentation generation
+- Backup and restore functionality
 
 ## Installation
 
@@ -49,6 +51,27 @@ go build
 sudo mv dotman /usr/local/bin/
 ```
 
+## Shell Completion Setup
+
+After installation, set up shell completion for your shell:
+
+### Zsh
+Add this line to your `~/.zshrc`:
+```bash
+eval "$(dotman completion zsh)"
+```
+
+### Bash
+Add this line to your `~/.bashrc`:
+```bash
+source <(dotman completion bash)
+```
+
+### Fish
+```bash
+dotman completion fish > ~/.config/fish/completions/dotman.fish
+```
+
 ## Prerequisites
 
 - Git configured with your name and email:
@@ -73,7 +96,6 @@ This will:
    - If no: Enter a new repository name (press Enter to use 'configs' as the default name)
 3. Create a private GitHub repository (if creating new)
 4. Initialize git and push the initial commit (if creating new)
-5. Link all configuration files
 
 ### Add a configuration file
 
@@ -81,7 +103,10 @@ This will:
 dotman add ~/.bashrc
 ```
 
-This will copy your `.bashrc` file to the dotman repository and prepare it for management.
+This will:
+1. Copy your file to the dotman repository
+2. Create a symbolic link in the original location
+3. Add and commit the file to git
 
 ### List managed files
 
@@ -99,13 +124,21 @@ dotman link
 
 This will create symbolic links for all managed files in their original locations.
 
-### Commit and push changes
+### Commit changes
 
 ```bash
 dotman commit "Your commit message"
 ```
 
-This will commit all changes in the dotman repository and push them to the remote repository.
+This will commit all changes in the dotman repository.
+
+### Push changes
+
+```bash
+dotman push
+```
+
+This will push committed changes to the remote repository.
 
 ### Update from remote repository
 
@@ -114,6 +147,59 @@ dotman update
 ```
 
 This will pull the latest changes from the remote repository and relink all files.
+
+### Remove a file from management
+
+```bash
+dotman remove ~/.bashrc
+```
+
+This will:
+1. Copy the file back to its original location
+2. Remove the symbolic link
+3. Remove the file from git tracking
+4. Commit the removal
+
+### Health Check
+
+```bash
+dotman check
+```
+
+This will:
+1. Check for broken symbolic links
+2. Verify file permissions
+3. Check git repository status
+4. Verify backup integrity
+5. Check for file conflicts
+6. Check for outdated configurations
+7. Monitor disk space
+8. Check for uncommitted changes
+
+### Generate Documentation
+
+```bash
+dotman docs
+```
+
+This will:
+1. Create a main README with an overview of all configurations
+2. Generate individual documentation for each configuration file
+3. Detect and document dependencies and tags
+4. Save metadata in JSON format
+
+### Backup and Restore
+
+```bash
+# Create a backup
+dotman backup ~/.bashrc
+
+# List available backups
+dotman restore
+
+# Restore a specific backup
+dotman restore 2024-02-20-123456
+```
 
 ### Upgrade dotman
 
@@ -134,26 +220,6 @@ dotman version
 
 This will show the current version, commit hash, and build date.
 
-### Shell Completion
-
-dotman supports shell completion for bash, zsh, fish, and PowerShell. The installation script will automatically set up completions for your shell.
-
-To manually set up completions:
-
-```bash
-# Bash
-source <(dotman completion bash)
-
-# Zsh
-source <(dotman completion zsh)
-
-# Fish
-dotman completion fish > ~/.config/fish/completions/dotman.fish
-
-# PowerShell
-dotman completion powershell > dotman.ps1
-```
-
 ## Example Workflow
 
 ### New Setup
@@ -171,19 +237,9 @@ dotman completion powershell > dotman.ps1
    dotman add ~/.config/i3/config
    ```
 
-3. Check managed files:
+3. Push your changes:
    ```bash
-   dotman list
-   ```
-
-4. Link all files:
-   ```bash
-   dotman link
-   ```
-
-5. Commit and push your changes:
-   ```bash
-   dotman commit "Initial configuration"
+   dotman push
    ```
 
 ### Using on Another Machine
@@ -201,23 +257,12 @@ dotman completion powershell > dotman.ps1
 
 ```
 ~/.dotman/
-├── configs/
-│   ├── .bashrc
-│   ├── .vimrc
-│   └── .config/
-│       └── i3/
-│           └── config
+├── configs/          # Your configuration files
+├── backups/          # Backup files
+├── health/           # Health check results
+├── docs/             # Generated documentation
 ├── .git/
 └── .gitignore
-```
-
-## Versioning
-
-dotman follows [Semantic Versioning](https://semver.org/). The version number is automatically injected during the build process.
-
-To check your current version:
-```bash
-dotman version
 ```
 
 ## Contributing
