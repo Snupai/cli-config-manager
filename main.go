@@ -491,8 +491,18 @@ Examples:
 
 		fmt.Println("Installing new version...")
 		if err := os.Rename(dotmanPath, currentBinary); err != nil {
-			fmt.Printf("Error installing new version: %v\n", err)
-			os.Exit(1)
+			if linkErr, ok := err.(*os.LinkError); ok && strings.Contains(linkErr.Error(), "cross-device link") {
+				if verbose {
+					fmt.Println("Rename failed due to cross-device link, falling back to copy.")
+				}
+				if err := copyFile(dotmanPath, currentBinary); err != nil {
+					fmt.Printf("Error copying new version: %v\n", err)
+					os.Exit(1)
+				}
+			} else {
+				fmt.Printf("Error installing new version: %v\n", err)
+				os.Exit(1)
+			}
 		}
 
 		fmt.Printf("Successfully upgraded to version %s\n", latestVersion)
@@ -542,6 +552,21 @@ func untar(src, dest string, verbose bool) error {
 		}
 	}
 	return nil
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
 }
 
 func init() {
