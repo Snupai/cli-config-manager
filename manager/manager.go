@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"cli-config-manager/config"
@@ -55,12 +56,12 @@ func (m *Manager) InitializeFromExistingRepo(repoURL string) error {
 	gitUserCmd := exec.Command("git", "config", "user.name")
 	gitEmailCmd := exec.Command("git", "config", "user.email")
 
-	_, err := gitUserCmd.Output()
+	userName, err := gitUserCmd.Output()
 	if err != nil {
 		return fmt.Errorf("git user.name not configured. Please run: git config --global user.name 'Your Name'")
 	}
 
-	_, err = gitEmailCmd.Output()
+	userEmail, err := gitEmailCmd.Output()
 	if err != nil {
 		return fmt.Errorf("git user.email not configured. Please run: git config --global user.email 'your.email@example.com'")
 	}
@@ -97,18 +98,43 @@ func (m *Manager) InitializeFromExistingRepo(repoURL string) error {
 		return fmt.Errorf("error updating .gitignore: %v", err)
 	}
 
+	// Configure git for this repository
+	configCmds := []struct {
+		args []string
+		desc string
+	}{
+		{[]string{"config", "user.name", strings.TrimSpace(string(userName))}, "Setting user name"},
+		{[]string{"config", "user.email", strings.TrimSpace(string(userEmail))}, "Setting user email"},
+	}
+
+	for _, cmd := range configCmds {
+		fmt.Printf("%s...\n", cmd.desc)
+		gitCmd := exec.Command("git", append([]string{"-C", m.config.DotmanDir}, cmd.args...)...)
+		if err := gitCmd.Run(); err != nil {
+			return fmt.Errorf("error %s: %v", cmd.desc, err)
+		}
+	}
+
 	// Add and commit the configs directory
+	fmt.Println("Adding configs directory...")
 	addCmd := exec.Command("git", "-C", m.config.DotmanDir, "add", "configs", ".gitignore")
 	if err := addCmd.Run(); err != nil {
 		return fmt.Errorf("error adding configs directory: %v", err)
 	}
 
+	fmt.Println("Committing changes...")
 	commitCmd := exec.Command("git", "-C", m.config.DotmanDir, "commit", "-m", "Add configs directory")
 	if err := commitCmd.Run(); err != nil {
-		return fmt.Errorf("error committing configs directory: %v", err)
+		// If there's nothing to commit, that's fine
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			fmt.Println("No changes to commit")
+		} else {
+			return fmt.Errorf("error committing configs directory: %v", err)
+		}
 	}
 
 	// Push the changes
+	fmt.Println("Pushing changes...")
 	pushCmd := exec.Command("git", "-C", m.config.DotmanDir, "push")
 	if err := pushCmd.Run(); err != nil {
 		fmt.Printf("Warning: Failed to push changes: %v\n", err)
@@ -245,6 +271,27 @@ func (m *Manager) AddFile(filePath string) error {
 	}
 
 	fmt.Printf("Added and linked: %s -> %s\n", absPath, targetPath)
+
+	// Add and commit the file
+	fmt.Println("Committing changes...")
+	addCmd := exec.Command("git", "-C", m.config.DotmanDir, "add", targetPath)
+	if err := addCmd.Run(); err != nil {
+		return fmt.Errorf("error adding file to git: %v", err)
+	}
+
+	commitMsg := fmt.Sprintf("Add %s", relPath)
+	commitCmd := exec.Command("git", "-C", m.config.DotmanDir, "commit", "-m", commitMsg)
+	if err := commitCmd.Run(); err != nil {
+		return fmt.Errorf("error committing file: %v", err)
+	}
+
+	// Push the changes
+	fmt.Println("Pushing changes...")
+	pushCmd := exec.Command("git", "-C", m.config.DotmanDir, "push")
+	if err := pushCmd.Run(); err != nil {
+		fmt.Printf("Warning: Failed to push changes: %v\n", err)
+	}
+
 	return nil
 }
 

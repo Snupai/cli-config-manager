@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -12,11 +13,11 @@ type Config struct {
 	ConfigsDir string
 }
 
-// New creates a new Config instance
-func New() (*Config, error) {
+// NewWithoutDirectories creates a new Config without creating directories
+func NewWithoutDirectories() (*Config, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error getting home directory: %v", err)
 	}
 
 	dotmanDir := filepath.Join(homeDir, ".dotman")
@@ -27,6 +28,20 @@ func New() (*Config, error) {
 		DotmanDir:  dotmanDir,
 		ConfigsDir: configsDir,
 	}, nil
+}
+
+// New creates a new Config and ensures all required directories exist
+func New() (*Config, error) {
+	cfg, err := NewWithoutDirectories()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := cfg.EnsureDirectories(); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
 }
 
 // EnsureDirectories creates necessary directories if they don't exist

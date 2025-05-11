@@ -68,14 +68,22 @@ Examples:
   # Use an existing repository
   dotman init  # Then choose 'y' and enter the URL when prompted`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cfg, err := config.New()
+		// Create config without ensuring directories
+		cfg, err := config.NewWithoutDirectories()
 		if err != nil {
 			fmt.Printf("Error creating config: %v\n", err)
 			os.Exit(1)
 		}
 
-		if err := cfg.EnsureDirectories(); err != nil {
-			fmt.Printf("Error creating directories: %v\n", err)
+		// Check if directory exists and is not empty
+		if entries, err := os.ReadDir(cfg.DotmanDir); err == nil && len(entries) > 0 {
+			fmt.Printf("Error: %s is not empty. Please remove it first or use a different directory.\n", cfg.DotmanDir)
+			os.Exit(1)
+		}
+
+		// Create the directory
+		if err := os.MkdirAll(cfg.DotmanDir, 0755); err != nil {
+			fmt.Printf("Error creating directory: %v\n", err)
 			os.Exit(1)
 		}
 
