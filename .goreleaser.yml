@@ -23,7 +23,8 @@ builds:
       - -X main.date={{.Date}}
 
 archives:
-  - format: tar.gz
+  - id: tarball
+    format: tar.gz
     name_template: >-
       {{ .ProjectName }}-
       {{- title .Os }}-
@@ -38,7 +39,8 @@ archives:
       - README.md
       - install.sh
 
-  - format: binary
+  - id: binary
+    format: binary
     name_template: "dotman-{{ .Os }}-{{ .Arch }}"
 
 changelog:
