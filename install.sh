@@ -21,15 +21,15 @@ command_exists() {
 }
 
 # Detect OS and architecture
-OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+OS="$(uname -s)"
 ARCH="$(uname -m)"
 
-# Map architecture to Go architecture
+# Map architecture to release arch
 case "$ARCH" in
-    "x86_64")
-        ARCH="amd64"
+    "x86_64"|"amd64")
+        ARCH="x86_64"
         ;;
-    "aarch64")
+    "aarch64"|"arm64")
         ARCH="arm64"
         ;;
     *)
@@ -38,13 +38,13 @@ case "$ARCH" in
         ;;
 esac
 
-# Map OS to Go OS
+# Map OS to release OS
 case "$OS" in
-    "linux")
-        OS="linux"
+    "Linux"|"linux")
+        OS="Linux"
         ;;
-    "darwin")
-        OS="darwin"
+    "Darwin"|"darwin")
+        OS="Darwin"
         ;;
     *)
         print_color "$RED" "Unsupported OS: $OS"
@@ -63,39 +63,28 @@ fi
 
 print_color "$GREEN" "Latest version: $LATEST_VERSION"
 
-# Download URL
-DOWNLOAD_URL="https://github.com/Snupai/cli-config-manager/releases/download/${LATEST_VERSION}/dotman-${OS}-${ARCH}"
+# Download the archive (always, since that's what is available)
+ARCHIVE_URL="https://github.com/Snupai/cli-config-manager/releases/download/${LATEST_VERSION}/cli-config-manager-${OS}-${ARCH}.tar.gz"
+ARCHIVE_PATH="$TEMP_DIR/archive.tar.gz"
 
-# Create temporary directory
-TEMP_DIR=$(mktemp -d)
-trap 'rm -rf "$TEMP_DIR"' EXIT
-
-# Download the binary
-print_color "$YELLOW" "Downloading dotman..."
-if curl -L "$DOWNLOAD_URL" -o "$TEMP_DIR/dotman" --fail --progress-bar; then
-    BINARY_PATH="$TEMP_DIR/dotman"
-else
-    print_color "$RED" "Raw binary not found at $DOWNLOAD_URL. Trying archive..."
-    ARCHIVE_URL="https://github.com/Snupai/cli-config-manager/releases/download/${LATEST_VERSION}/cli-config-manager-${OS}-${ARCH}.tar.gz"
-    ARCHIVE_PATH="$TEMP_DIR/archive.tar.gz"
-    if curl -L "$ARCHIVE_URL" -o "$ARCHIVE_PATH" --fail --progress-bar; then
-        print_color "$YELLOW" "Extracting archive..."
-        tar -xzf "$ARCHIVE_PATH" -C "$TEMP_DIR"
-        # Find the dotman binary in the extracted files
-        if [ -f "$TEMP_DIR/dotman" ]; then
-            BINARY_PATH="$TEMP_DIR/dotman"
-        else
-            # Try to find it in a subdirectory if present
-            BINARY_PATH=$(find "$TEMP_DIR" -type f -name dotman | head -n 1)
-            if [ -z "$BINARY_PATH" ]; then
-                print_color "$RED" "dotman binary not found in the archive."
-                exit 1
-            fi
-        fi
+print_color "$YELLOW" "Downloading archive..."
+if curl -L "$ARCHIVE_URL" -o "$ARCHIVE_PATH" --fail --progress-bar; then
+    print_color "$YELLOW" "Extracting archive..."
+    tar -xzf "$ARCHIVE_PATH" -C "$TEMP_DIR"
+    # Find the dotman binary in the extracted files
+    if [ -f "$TEMP_DIR/dotman" ]; then
+        BINARY_PATH="$TEMP_DIR/dotman"
     else
-        print_color "$RED" "Failed to download both raw binary and archive."
-        exit 1
+        # Try to find it in a subdirectory if present
+        BINARY_PATH=$(find "$TEMP_DIR" -type f -name dotman | head -n 1)
+        if [ -z "$BINARY_PATH" ]; then
+            print_color "$RED" "dotman binary not found in the archive."
+            exit 1
+        fi
     fi
+else
+    print_color "$RED" "Failed to download archive from $ARCHIVE_URL."
+    exit 1
 fi
 
 # Verify the binary
