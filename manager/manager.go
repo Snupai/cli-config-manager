@@ -274,15 +274,29 @@ func (m *Manager) AddFile(filePath string) error {
 
 	// Add and commit the file
 	fmt.Println("Committing changes...")
-	addCmd := exec.Command("git", "-C", m.config.DotmanDir, "add", targetPath)
-	if err := addCmd.Run(); err != nil {
-		return fmt.Errorf("error adding file to git: %v", err)
+
+	// First, ensure the file is tracked by git
+	addCmd := exec.Command("git", "-C", m.config.DotmanDir, "add", "-f", targetPath)
+	if output, err := addCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("error adding file to git: %v\nOutput: %s", err, string(output))
+	}
+
+	// Check if there are any changes to commit
+	statusCmd := exec.Command("git", "-C", m.config.DotmanDir, "status", "--porcelain")
+	output, err := statusCmd.Output()
+	if err != nil {
+		return fmt.Errorf("error checking git status: %v", err)
+	}
+
+	if len(output) == 0 {
+		fmt.Println("No changes to commit")
+		return nil
 	}
 
 	commitMsg := fmt.Sprintf("Add %s", relPath)
 	commitCmd := exec.Command("git", "-C", m.config.DotmanDir, "commit", "-m", commitMsg)
-	if err := commitCmd.Run(); err != nil {
-		return fmt.Errorf("error committing file: %v", err)
+	if output, err := commitCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("error committing file: %v\nOutput: %s", err, string(output))
 	}
 
 	return nil
