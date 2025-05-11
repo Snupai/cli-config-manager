@@ -61,5 +61,6 @@ release:
 # Add binary uploads
 uploads:
   - name: binaries
-    paths:
+    # Use the proper key as per GoReleaser's documentation
+    assets:
       - dist/dotman-*
