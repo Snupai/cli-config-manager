@@ -20,6 +20,10 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Create temporary directory
+TEMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TEMP_DIR"' EXIT
+
 # Detect OS and architecture
 OS="$(uname -s)"
 ARCH="$(uname -m)"
